@@ -1,6 +1,7 @@
 using Discord;
 using Discord.Rest;
 using Discord.WebSocket;
+using DecisionHelper.Services;
 
 public class Bot
 {
@@ -15,7 +16,14 @@ public class Bot
     _token = token;
     _client = new DiscordSocketClient();
     _restClient = new DiscordRestClient();
-    _commandHandler = new CommandHandler();
+
+    var movieService = new MovieService();
+    var personService = new PersonService();
+
+    _commandHandler = new CommandHandler(
+        movieService,
+        personService
+        );
     _serverId = serverId;
   }
   
@@ -48,14 +56,46 @@ public class Bot
 
   private async Task RegisterCommandsAsync()
   {
-    var command = new SlashCommandBuilder()
+    var pingCommand = new SlashCommandBuilder()
       .WithName("ping")
       .WithDescription("Replies with pong!");
 
+    var setNicknameCommand = new SlashCommandBuilder()
+      .WithName("setnickname")
+      .WithDescription("Sets your nickname")
+      .AddOption(
+          "nickname",
+          ApplicationCommandOptionType.String,
+          "The nickname to use",
+          isRequired: true
+          );
+
+    var addMovieCommand = new SlashCommandBuilder()
+      .WithName("addmovie")
+      .WithDescription("Adds a movie to your list")
+      .AddOption(
+          "name",
+          ApplicationCommandOptionType.String,
+          "The name of the movie",
+          isRequired: true
+          );
+
+    ulong serverId = ulong.Parse(_serverId);
+
     await _restClient.CreateGuildCommand(
-        command.Build(),
-        ulong.Parse(_serverId)
+        pingCommand.Build(),
+        serverId
         );
+
+    await _restClient.CreateGuildCommand(
+        setNicknameCommand.Build(),
+        serverId
+        );
+
+    await _restClient.CreateGuildCommand(
+          addMovieCommand.Build(),
+          serverId
+          );
   }
 
 }

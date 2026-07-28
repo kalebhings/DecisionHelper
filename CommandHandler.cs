@@ -1,14 +1,23 @@
 using Discord.WebSocket;
+using DecisionHelper.Services;
 
 public class CommandHandler
 {
   private readonly Dictionary<string, ICommand> _commands;
 
-  public CommandHandler()
+  public CommandHandler(
+      MovieService movieService,
+      PersonService personService
+      )
   {
     var commands = new List<ICommand>
     {
-      new PingCommand()
+      new PingCommand(),
+      new SetNicknameCommand(personService),
+      new AddMovieCommand(
+          movieService,
+          personService
+          )
     };
 
     _commands = commands.ToDictionary(
@@ -22,10 +31,14 @@ public class CommandHandler
     {
       return;
     }
-    
-    if (_commands.TryGetValue(command.CommandName, out var commandHandler))
+
+    if (_commands.TryGetValue(
+          command.CommandName,
+          out var commandHandler
+          ))
     {
       await commandHandler.ExecuteAsync(command);
     }
+    
   }
 }
