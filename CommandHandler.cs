@@ -14,12 +14,9 @@ public class CommandHandler
     {
       new PingCommand(),
       new SetNicknameCommand(personService),
-      new AddMovieCommand(
+      new MovieCommand(
           movieService,
-          personService
-          ),
-      new ListMoviesCommand(movieService),
-      new PickMovieCommand(movieService),
+          personService)
     };
 
     _commands = commands.ToDictionary(

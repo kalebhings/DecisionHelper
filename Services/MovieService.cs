@@ -138,4 +138,55 @@ public class MovieService
             .Trim()
             .ToUpperInvariant();
     }
+
+public async Task<MovieWatchResult> MarkMovieWatchedAsync(
+    string title,
+    int personId)
+{
+    string normalizedTitle = NormalizeTitle(title);
+
+    await using var db =
+        await _dbContextFactory.CreateDbContextAsync();
+
+    Movie? movie = await db.Movies
+        .SingleOrDefaultAsync(movie =>
+            movie.NormalizedTitle == normalizedTitle);
+
+    if (movie is null)
+    {
+        return MovieWatchResult.MovieNotFound;
+    }
+
+    MovieWatchStatus? status =
+        await db.MovieWatchStatuses
+            .SingleOrDefaultAsync(status =>
+                status.MovieId == movie.Id &&
+                status.PersonId == personId);
+
+    if (status is null)
+    {
+        status = new MovieWatchStatus
+        {
+            MovieId = movie.Id,
+            PersonId = personId,
+            HasSeen = true,
+            WatchedAtUtc = DateTime.UtcNow
+        };
+
+        db.MovieWatchStatuses.Add(status);
+    }
+    else if (status.HasSeen)
+    {
+        return MovieWatchResult.AlreadyWatched;
+    }
+    else
+    {
+        status.HasSeen = true;
+        status.WatchedAtUtc = DateTime.UtcNow;
+    }
+
+    await db.SaveChangesAsync();
+
+    return MovieWatchResult.MarkedWatched;
+    }
 }

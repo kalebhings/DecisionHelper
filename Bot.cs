@@ -54,73 +54,94 @@ public class Bot
     return Task.CompletedTask;
   }
 
+
   private async Task RegisterCommandsAsync()
   {
-    var pingCommand = new SlashCommandBuilder()
-      .WithName("ping")
-      .WithDescription("Replies with pong!");
+      ulong serverId = ulong.Parse(_serverId);
 
-    var setNicknameCommand = new SlashCommandBuilder()
-      .WithName("setnickname")
-      .WithDescription("Sets your nickname")
-      .AddOption(
-          "nickname",
-          ApplicationCommandOptionType.String,
-          "The nickname to use",
-          isRequired: true
-          );
+      SlashCommandBuilder[] commands = BuildCommands();
 
-    var addMovieCommand = new SlashCommandBuilder()
-      .WithName("addmovie")
-      .WithDescription("Adds a movie to your list")
-      .AddOption(
-          "name",
-          ApplicationCommandOptionType.String,
-          "The name of the movie",
-          isRequired: true
-          )
-      .AddOption(
-          "year",
-          ApplicationCommandOptionType.Integer,
-          "The movie's release year",
-          isRequired: false
-          );
+      foreach (SlashCommandBuilder command in commands)
+      {
+          await _restClient.CreateGuildCommand(
+              command.Build(),
+              serverId);
+      }
+  }
 
-    var listMoviesCommand = new SlashCommandBuilder()
-      .WithName("listmovies")
-      .WithDescription("Shows all movies on the movie list.");
+  private static SlashCommandBuilder[] BuildCommands()
+  {
+      return
+      [
+          BuildPingCommand(),
+          BuildSetNicknameCommand(),
+          BuildMovieCommand()
+      ];
+  }
 
-    var pickMovieCommand = new SlashCommandBuilder()
-      .WithName("pickmovie")
-      .WithDescription("Picks a random movie from the movie list.");
+  private static SlashCommandBuilder BuildPingCommand()
+  {
+      return new SlashCommandBuilder()
+          .WithName("ping")
+          .WithDescription("Replies with pong!");
+  }
 
-    ulong serverId = ulong.Parse(_serverId);
+  private static SlashCommandBuilder BuildSetNicknameCommand()
+  {
+      return new SlashCommandBuilder()
+          .WithName("setnickname")
+          .WithDescription("Sets your nickname")
+          .AddOption(
+              "nickname",
+              ApplicationCommandOptionType.String,
+              "The nickname to use",
+              isRequired: true);
+  }
 
-    await _restClient.CreateGuildCommand(
-        pingCommand.Build(),
-        serverId
-        );
+  private static SlashCommandBuilder BuildMovieCommand()
+  {
+      return new SlashCommandBuilder()
+          .WithName("movie")
+          .WithDescription("Manage and choose movies")
 
-    await _restClient.CreateGuildCommand(
-        setNicknameCommand.Build(),
-        serverId
-        );
+          .AddOption(
+              new SlashCommandOptionBuilder()
+                  .WithName("add")
+                  .WithDescription("Adds a movie to the list")
+                  .WithType(ApplicationCommandOptionType.SubCommand)
+                  .AddOption(
+                      "name",
+                      ApplicationCommandOptionType.String,
+                      "The movie title",
+                      isRequired: true)
+                  .AddOption(
+                      "year",
+                      ApplicationCommandOptionType.Integer,
+                      "The movie's release year",
+                      isRequired: false))
 
-    await _restClient.CreateGuildCommand(
-          addMovieCommand.Build(),
-          serverId
-          );
+          .AddOption(
+              new SlashCommandOptionBuilder()
+                  .WithName("list")
+                  .WithDescription("Shows all movies")
+                  .WithType(ApplicationCommandOptionType.SubCommand))
 
-    await _restClient.CreateGuildCommand(
-        listMoviesCommand.Build(),
-        serverId
-        );
+          .AddOption(
+              new SlashCommandOptionBuilder()
+                  .WithName("pick")
+                  .WithDescription("Picks a random movie")
+                  .WithType(ApplicationCommandOptionType.SubCommand))
 
-    await _restClient.CreateGuildCommand(
-        pickMovieCommand.Build(),
-        serverId
-        );
-        
+          .AddOption(
+              new SlashCommandOptionBuilder()
+                  .WithName("watched")
+                  .WithDescription("Marks a movie as watched")
+                  .WithType(ApplicationCommandOptionType.SubCommand)
+                  .AddOption(
+                      "name",
+                      ApplicationCommandOptionType.String,
+                      "The movie title",
+                      isRequired: true));
   }
 
 }
