@@ -9,11 +9,21 @@ public class Bot
   private readonly DiscordRestClient _restClient;
   private readonly string _token;
   private readonly CommandHandler _commandHandler;
-  private readonly string _serverId;
+  private readonly IReadOnlyCollection<ulong> _serverIds;
+  //private readonly string _serverId;
+
+//public Bot(
+//  string token,
+//  string serverId,
+//  CommandHandler)
+//  {
+//  _serverId = serverId;
+//  }
+//)
 
   public Bot(
       string token,
-      string serverId,
+      IReadOnlyCollection<ulong> serverIds,
       CommandHandler commandHandler)
   {
       _token = token;
@@ -24,7 +34,8 @@ public class Bot
 
       _commandHandler = commandHandler;
 
-      _serverId = serverId;
+      _serverIds = serverIds;
+      //_serverId = serverId;
   }
   
   public async Task StartAsync()
@@ -54,7 +65,7 @@ public class Bot
     return Task.CompletedTask;
   }
 
-
+/*
   private async Task RegisterCommandsAsync()
   {
       ulong serverId = ulong.Parse(_serverId);
@@ -67,6 +78,21 @@ public class Bot
               command.Build(),
               serverId);
       }
+  }
+*/
+  private async Task RegisterCommandsAsync()
+  {
+    SlashCommandBuilder[] commands = BuildCommands();
+
+    foreach (ulong serverId in _serverIds)
+    {
+      foreach (SlashCommandBuilder command in commands)
+      {
+        await _restClient.CreateGuildCommand(
+            command.Build(),
+            serverId);
+      }
+    }
   }
 
   private static SlashCommandBuilder[] BuildCommands()

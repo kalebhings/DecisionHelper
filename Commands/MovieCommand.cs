@@ -142,21 +142,31 @@ public class MovieCommand : ICommand
             return;
         }
 
-        var lines = movies.Select(movie =>
+        var groupedMovies = movies
+            .GroupBy(movie =>
+                movie.AddedBy?.Nickname ?? "Unknown")
+            .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase);
+
+        var sections = groupedMovies.Select(group =>
         {
-            string year = movie.ReleaseYear.HasValue
-                ? $" ({movie.ReleaseYear})"
-                : string.Empty;
+            var movieLines = group
+                .OrderBy(movie => movie.Title, StringComparer.OrdinalIgnoreCase)
+                .Select(movie =>
+                {
+                    string year = movie.ReleaseYear.HasValue
+                        ? $" ({movie.ReleaseYear})"
+                        : string.Empty;
 
-            string addedBy =
-                movie.AddedBy?.Nickname ?? "Unknown";
+                    return $"• **{movie.Title}**{year}";
+                });
 
-            return $"• **{movie.Title}**{year} — added by {addedBy}";
+            return $"**{group.Key}**\n" +
+                string.Join("\n", movieLines);
         });
 
         await command.RespondAsync(
             $"**Movie List ({movies.Count})**\n\n" +
-            string.Join("\n", lines));
+            string.Join("\n\n", sections));
     }
 
     private async Task PickMovieAsync(

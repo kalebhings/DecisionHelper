@@ -14,9 +14,22 @@ public class Program
             Environment.GetEnvironmentVariable(
                 "DISCORD_TOKEN");
 
-        string? serverId =
-            Environment.GetEnvironmentVariable(
-                "DISCORD_SERVER_ID");
+        //string? serverId =
+        //    Environment.GetEnvironmentVariable(
+        //        "DISCORD_SERVER_ID");
+        string? serverIdsRaw = 
+          Environment.GetEnvironmentVariable(
+              "DISCORD_SERVER_IDS");
+
+        if (string.IsNullOrWhiteSpace(serverIdsRaw))
+        {
+          throw new InvalidOperationException("Discord Server IDs are missing.");
+        }
+
+        ulong[] serverIds = serverIdsRaw
+          .Split(',', StringSplitOptions.RemoveEmptyEntries)
+          .Select(id => ulong.Parse(id.Trim()))
+          .ToArray();
 
         string connectionString =
             Environment.GetEnvironmentVariable(
@@ -29,12 +42,13 @@ public class Program
                 "Discord token is missing.");
         }
 
+        /*
         if (string.IsNullOrWhiteSpace(serverId))
         {
             throw new InvalidOperationException(
                 "Discord server ID is missing.");
         }
-
+        */
         var services = new ServiceCollection();
 
         services.AddDbContextFactory<DecisionHelperDbContext>(
@@ -59,9 +73,14 @@ public class Program
                 movieService,
                 personService);
 
+        //var bot = new Bot(
+        //    token,
+        //    serverId,
+        //    commandHandler);
+
         var bot = new Bot(
             token,
-            serverId,
+            serverIds,
             commandHandler);
 
         await bot.StartAsync();
