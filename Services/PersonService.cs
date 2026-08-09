@@ -1,62 +1,106 @@
+using DecisionHelper.Data;
 using DecisionHelper.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace DecisionHelper.Services;
 
 public class PersonService
 {
-  private readonly Dictionary<ulong, Person> _people = [];
+    private readonly IDbContextFactory<DecisionHelperDbContext>
+        _dbContextFactory;
 
-  public Person SetNickname(
-      ulong discordId,
-      string nickname
-      )
-  {
-    string normalizedNickname = nickname.Trim();
-
-    if (string.IsNullOrWhiteSpace(normalizedNickname))
+    public PersonService(
+        IDbContextFactory<DecisionHelperDbContext> dbContextFactory)
     {
-      throw new ArgumentException(
-          "Nickname cannot be empty",
-          nameof(nickname)
-          );
+        _dbContextFactory = dbContextFactory;
     }
 
-    var person = new Person
+    public async Task<Person> GetOrCreatePersonAsync(
+        ulong discordId,
+        string defaultNickname)
     {
-      DiscordId = discordId,
-      Nickname = normalizedNickname
-    };
+        await using var db =
+            await _dbContextFactory.CreateDbContextAsync();
 
-    _people[discordId] = person;
+        string discordUserId = discordId.ToString();
 
-    return person;
-  }
+        var person = await db.People
+            .SingleOrDefaultAsync(
+                person =>
+                    person.DiscordUserId == discordUserId);
 
-  public Person GetOrCreatePerson(
-      ulong discordId,
-      string defaultNickname
-      )
-  {
-    if (_people.TryGetValue(discordId, out var person))
-    {
-      return person;
+        if (person is not null)
+        {
+            return person;
+        }
+
+        person = new Person
+        {
+            DiscordUserId = discordUserId,
+            Nickname = defaultNickname.Trim()
+        };
+
+        db.People.Add(person);
+
+        await db.SaveChangesAsync();
+
+        return person;
     }
 
-    person = new Person
+    public async Task<Person?> GetPersonAsync(
+        ulong discordId)
     {
-      DiscordId = discordId,
-      Nickname = defaultNickname
-    };
+        await using var db =
+            await _dbContextFactory.CreateDbContextAsync();
 
-    _people[discordId] = person;
+        string discordUserId = discordId.ToString();
 
-    return person;
-  }
+        return await db.People
+            .SingleOrDefaultAsync(
+                person =>
+                    person.DiscordUserId == discordUserId);
+    }
 
-  public Person? GetPerson(ulong discordId)
-  {
-    _people.TryGetValue(discordId, out var person);
+    public async Task<Person> SetNicknameAsync(
+        ulong discordId,
+        string nickname)
+    {
+        string normalizedNickname = nickname.Trim();
 
-    return person;
-  }
+        if (string.IsNullOrWhiteSpace(normalizedNickname))
+        {
+            throw new ArgumentException(
+                "Nickname cannot be empty.",
+                nameof(nickname));
+        }
+
+        await using var db =
+            await _dbContextFactory.CreateDbContextAsync();
+
+        string discordUserId = discordId.ToString();
+
+        var person = await db.People
+            .SingleOrDefaultAsync(
+                person =>
+                    person.DiscordUserId == discordUserId);
+
+        if (person is null)
+        {
+            person = new Person
+            {
+                DiscordUserId = discordUserId,
+                Nickname = normalizedNickname
+            };
+
+            db.People.Add(person);
+        }
+        else
+        {
+            person.Nickname = normalizedNickname;
+        }
+
+        await db.SaveChangesAsync();
+
+        return person;
+    }
 }

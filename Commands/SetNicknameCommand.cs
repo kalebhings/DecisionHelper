@@ -30,7 +30,7 @@ public class SetNicknameCommand : ICommand
             return;
         }
 
-        var person = _personService.SetNickname(
+        var person = await _personService.SetNicknameAsync(
             command.User.Id,
             nickname
         );

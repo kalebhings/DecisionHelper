@@ -11,20 +11,20 @@ public class Bot
   private readonly CommandHandler _commandHandler;
   private readonly string _serverId;
 
-  public Bot(string token, string serverId)
+  public Bot(
+      string token,
+      string serverId,
+      CommandHandler commandHandler)
   {
-    _token = token;
-    _client = new DiscordSocketClient();
-    _restClient = new DiscordRestClient();
+      _token = token;
 
-    var movieService = new MovieService();
-    var personService = new PersonService();
+      _client = new DiscordSocketClient();
 
-    _commandHandler = new CommandHandler(
-        movieService,
-        personService
-        );
-    _serverId = serverId;
+      _restClient = new DiscordRestClient();
+
+      _commandHandler = commandHandler;
+
+      _serverId = serverId;
   }
   
   public async Task StartAsync()

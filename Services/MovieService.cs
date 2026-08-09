@@ -1,86 +1,141 @@
+using DecisionHelper.Data;
 using DecisionHelper.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace DecisionHelper.Services;
 
 public class MovieService
 {
-  private readonly List<Movie> _movies = [];
+    private readonly IDbContextFactory<DecisionHelperDbContext>
+        _dbContextFactory;
 
-  public bool AddMovie(Movie movie)
-  {
-    ArgumentNullException.ThrowIfNull(movie);
-
-    string normalizedName = movie.Name.Trim();
-
-    if (string.IsNullOrWhiteSpace(normalizedName))
+    public MovieService(
+        IDbContextFactory<DecisionHelperDbContext> dbContextFactory)
     {
-      throw new ArgumentException(
-          "Movie name cannot be empty.",
-          nameof(movie)
-          );
+        _dbContextFactory = dbContextFactory;
     }
 
-    bool alreadyExists = _movies.Any(existingMovie =>
-        existingMovie.Name.Equals(
-          normalizedName,
-          StringComparison.OrdinalIgnoreCase
-          )
-        && existingMovie.AddedBy.DiscordId == movie.AddedBy.DiscordId
-        );
-
-    if (alreadyExists)
+    public async Task<Movie?> AddMovieAsync(
+        string title,
+        int? releaseYear,
+        int addedByPersonId)
     {
-      return false;
+        string normalizedTitle = NormalizeTitle(title);
+
+        if (string.IsNullOrWhiteSpace(normalizedTitle))
+        {
+            throw new ArgumentException(
+                "Movie title cannot be empty.",
+                nameof(title));
+        }
+
+        await using var db =
+            await _dbContextFactory.CreateDbContextAsync();
+
+        bool alreadyExists = await db.Movies
+            .AnyAsync(movie =>
+                movie.NormalizedTitle == normalizedTitle &&
+                movie.ReleaseYear == releaseYear);
+
+        if (alreadyExists)
+        {
+            return null;
+        }
+
+        var movie = new Movie
+        {
+            Title = title.Trim(),
+            NormalizedTitle = normalizedTitle,
+            ReleaseYear = releaseYear,
+            AddedByPersonId = addedByPersonId,
+            AddedAtUtc = DateTime.UtcNow
+        };
+
+        db.Movies.Add(movie);
+
+        await db.SaveChangesAsync();
+
+        return movie;
     }
 
-    Movie normalizedMovie = new()
+    public async Task<IReadOnlyList<Movie>> GetAllMoviesAsync()
     {
-      Name = normalizedName,
-      AddedBy = movie.AddedBy
-    };
+        await using var db =
+            await _dbContextFactory.CreateDbContextAsync();
 
-    _movies.Add(normalizedMovie);
-    return true;
-  }
-
-  public IReadOnlyCollection<Movie> GetAllMovies()
-  {
-    return _movies.AsReadOnly();
-  }
-
-  public IReadOnlyCollection<Movie> GetMoviesByPerson(ulong discordId)
-  {
-    return _movies
-      .Where(movie => movie.AddedBy.DiscordId == discordId)
-      .ToList()
-      .AsReadOnly();
-  }
-
-  public Movie? GetRandomMovie()
-  {
-    if (_movies.Count == 0)
-    {
-      return null;
+        return await db.Movies
+            .AsNoTracking()
+            .Include(movie => movie.AddedBy)
+            .OrderBy(movie => movie.Title)
+            .ToListAsync();
     }
 
-    int randomIndex = Random.Shared.Next(_movies.Count);
-
-    return _movies[randomIndex];
-  }
-
-  public Movie? GetRandomMovieByPerson(ulong discordId)
-  {
-    List<Movie> matchingMovies = _movies
-      .Where(movie => movie.AddedBy.DiscordId == discordId)
-      .ToList();
-
-    if (matchingMovies.Count == 0)
+    public async Task<IReadOnlyList<Movie>> GetMoviesByPersonAsync(
+        int personId)
     {
-      return null;
+        await using var db =
+            await _dbContextFactory.CreateDbContextAsync();
+
+        return await db.Movies
+            .AsNoTracking()
+            .Include(movie => movie.AddedBy)
+            .Where(movie =>
+                movie.AddedByPersonId == personId)
+            .OrderBy(movie => movie.Title)
+            .ToListAsync();
     }
 
-    int randomIndex = Random.Shared.Next(matchingMovies.Count);
+    public async Task<Movie?> GetRandomMovieAsync()
+    {
+        await using var db =
+            await _dbContextFactory.CreateDbContextAsync();
 
-    return matchingMovies[randomIndex];
-  }
+        int count = await db.Movies.CountAsync();
+
+        if (count == 0)
+        {
+            return null;
+        }
+
+        int randomIndex = Random.Shared.Next(count);
+
+        return await db.Movies
+            .AsNoTracking()
+            .Include(movie => movie.AddedBy)
+            .Skip(randomIndex)
+            .FirstOrDefaultAsync();
+    }
+
+    public async Task<Movie?> GetRandomMovieByPersonAsync(
+        int personId)
+    {
+        await using var db =
+            await _dbContextFactory.CreateDbContextAsync();
+
+        var movies = db.Movies
+            .AsNoTracking()
+            .Include(movie => movie.AddedBy)
+            .Where(movie =>
+                movie.AddedByPersonId == personId);
+
+        int count = await movies.CountAsync();
+
+        if (count == 0)
+        {
+            return null;
+        }
+
+        int randomIndex = Random.Shared.Next(count);
+
+        return await movies
+            .Skip(randomIndex)
+            .FirstOrDefaultAsync();
+    }
+
+    private static string NormalizeTitle(string title)
+    {
+        return title
+            .Trim()
+            .ToUpperInvariant();
+    }
 }

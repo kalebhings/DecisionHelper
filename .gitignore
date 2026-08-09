@@ -1,3 +1,23 @@
-.env
+# .NET build output
 bin/
 obj/
+
+# Environment variables/secrets
+.env
+.env.*
+!.env.example
+
+# SQLite database files
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+
+# IDE / editor state
+.vs/
+.idea/
+.vscode/
+
+# OS Junk
+.DS_Store
+Thumbs.db
