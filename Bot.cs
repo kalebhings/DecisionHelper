@@ -78,7 +78,21 @@ public class Bot
           ApplicationCommandOptionType.String,
           "The name of the movie",
           isRequired: true
+          )
+      .AddOption(
+          "year",
+          ApplicationCommandOptionType.Integer,
+          "The movie's release year",
+          isRequired: false
           );
+
+    var listMoviesCommand = new SlashCommandBuilder()
+      .WithName("listmovies")
+      .WithDescription("Shows all movies on the movie list.");
+
+    var pickMovieCommand = new SlashCommandBuilder()
+      .WithName("pickmovie")
+      .WithDescription("Picks a random movie from the movie list.");
 
     ulong serverId = ulong.Parse(_serverId);
 
@@ -96,6 +110,17 @@ public class Bot
           addMovieCommand.Build(),
           serverId
           );
+
+    await _restClient.CreateGuildCommand(
+        listMoviesCommand.Build(),
+        serverId
+        );
+
+    await _restClient.CreateGuildCommand(
+        pickMovieCommand.Build(),
+        serverId
+        );
+        
   }
 
 }

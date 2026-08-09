@@ -17,7 +17,9 @@ public class CommandHandler
       new AddMovieCommand(
           movieService,
           personService
-          )
+          ),
+      new ListMoviesCommand(movieService),
+      new PickMovieCommand(movieService),
     };
 
     _commands = commands.ToDictionary(

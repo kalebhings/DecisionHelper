@@ -25,6 +25,10 @@ public class AddMovieCommand : ICommand
           .FirstOrDefault(option =>
               option.Name == "name");
 
+      var yearOption = command.Data.Options
+        .FirstOrDefault(option =>
+            option.Name == "year");
+
       string? movieName =
           nameOption?.Value?.ToString();
 
@@ -35,6 +39,21 @@ public class AddMovieCommand : ICommand
               ephemeral: true);
 
           return;
+      }
+
+      int? releaseYear = null;
+      if (yearOption?.Value is long yearValue)
+      {
+        releaseYear = checked((int)yearValue);
+      }
+
+      if (releaseYear is < 1900 or > 2100)
+      {
+        await command.RespondAsync(
+            "Please provide a valid movie release year. Must be between 1900 or 2100",
+            ephemeral: true);
+        
+        return;
       }
 
       string defaultNickname =
@@ -49,8 +68,8 @@ public class AddMovieCommand : ICommand
       Movie? movie =
           await _movieService.AddMovieAsync(
               movieName,
-              releaseYear: null,
-              addedByPersonId: person.Id);
+              releaseYear,
+              person.Id);
 
       if (movie is null)
       {
