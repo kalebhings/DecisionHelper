@@ -6,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 public class Program
 {
-    public static async Task Main()
+    public static async Task Main(string[] args)
     {
         Env.Load();
 
@@ -14,9 +14,6 @@ public class Program
             Environment.GetEnvironmentVariable(
                 "DISCORD_TOKEN");
 
-        //string? serverId =
-        //    Environment.GetEnvironmentVariable(
-        //        "DISCORD_SERVER_ID");
         string? serverIdsRaw = 
           Environment.GetEnvironmentVariable(
               "DISCORD_SERVER_IDS");
@@ -42,13 +39,6 @@ public class Program
                 "Discord token is missing.");
         }
 
-        /*
-        if (string.IsNullOrWhiteSpace(serverId))
-        {
-            throw new InvalidOperationException(
-                "Discord server ID is missing.");
-        }
-        */
         var services = new ServiceCollection();
 
         services.AddDbContextFactory<DecisionHelperDbContext>(
@@ -72,17 +62,16 @@ public class Program
             new CommandHandler(
                 movieService,
                 personService);
-
-        //var bot = new Bot(
-        //    token,
-        //    serverId,
-        //    commandHandler);
+        
+        bool clearCommands = args.Contains(
+            "--clear-commands",
+            StringComparer.OrdinalIgnoreCase);
 
         var bot = new Bot(
             token,
             serverIds,
             commandHandler);
 
-        await bot.StartAsync();
+        await bot.StartAsync(clearCommands);
     }
 }
