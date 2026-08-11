@@ -1,4 +1,5 @@
-﻿using DecisionHelper.Data;
+using DecisionHelper.Configuration;
+using DecisionHelper.Data;
 using DecisionHelper.Services;
 using DotNetEnv;
 using Microsoft.EntityFrameworkCore;
@@ -8,70 +9,69 @@ public class Program
 {
     public static async Task Main(string[] args)
     {
-        Env.Load();
-
-        string? token =
-            Environment.GetEnvironmentVariable(
-                "DISCORD_TOKEN");
-
-        string? serverIdsRaw = 
-          Environment.GetEnvironmentVariable(
-              "DISCORD_SERVER_IDS");
-
-        if (string.IsNullOrWhiteSpace(serverIdsRaw))
-        {
-          throw new InvalidOperationException("Discord Server IDs are missing.");
-        }
-
-        ulong[] serverIds = serverIdsRaw
-          .Split(',', StringSplitOptions.RemoveEmptyEntries)
-          .Select(id => ulong.Parse(id.Trim()))
-          .ToArray();
-
-        string connectionString =
-            Environment.GetEnvironmentVariable(
-                "DATABASE_CONNECTION_STRING")
-            ?? "Data Source=decision-helper.db";
-
-        if (string.IsNullOrWhiteSpace(token))
-        {
-            throw new InvalidOperationException(
-                "Discord token is missing.");
-        }
+        Env.NoClobber().Load();
+        AppConfiguration configuration = AppConfiguration.FromEnvironment();
 
         var services = new ServiceCollection();
 
-        services.AddDbContextFactory<DecisionHelperDbContext>(
-            options =>
-                options.UseSqlite(connectionString));
+        services.AddDbContextFactory<DecisionHelperDbContext>(options =>
+            options.UseSqlite(configuration.DatabaseConnectionString));
 
-        await using var serviceProvider =
+        await using ServiceProvider serviceProvider =
             services.BuildServiceProvider();
 
-        var dbContextFactory =
+        IDbContextFactory<DecisionHelperDbContext> dbContextFactory =
             serviceProvider.GetRequiredService<
                 IDbContextFactory<DecisionHelperDbContext>>();
 
-        var personService =
-            new PersonService(dbContextFactory);
+        await using (DecisionHelperDbContext db =
+            await dbContextFactory.CreateDbContextAsync())
+        {
+            await db.Database.MigrateAsync();
+        }
 
-        var movieService =
-            new MovieService(dbContextFactory);
+        await new LegacyDataMigrator(dbContextFactory)
+            .MigrateAsync(configuration.ServerIds);
 
-        var commandHandler =
-            new CommandHandler(
-                movieService,
-                personService);
-        
+        if (args.Contains(
+            "--migrate-only",
+            StringComparer.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var personService = new PersonService(dbContextFactory);
+        var movieService = new MovieService(dbContextFactory);
+        var commandHandler = new CommandHandler(movieService, personService);
+
         bool clearCommands = args.Contains(
             "--clear-commands",
             StringComparer.OrdinalIgnoreCase);
 
-        var bot = new Bot(
-            token,
-            serverIds,
+        using var cancellationSource = new CancellationTokenSource();
+
+        ConsoleCancelEventHandler cancelHandler = (_, eventArgs) =>
+        {
+            eventArgs.Cancel = true;
+            cancellationSource.Cancel();
+        };
+
+        Console.CancelKeyPress += cancelHandler;
+
+        using var bot = new Bot(
+            configuration.DiscordToken,
+            configuration.ServerIds,
             commandHandler);
 
-        await bot.StartAsync(clearCommands);
+        try
+        {
+            await bot.StartAsync(
+                clearCommands,
+                cancellationSource.Token);
+        }
+        finally
+        {
+            Console.CancelKeyPress -= cancelHandler;
+        }
     }
 }

@@ -1,5 +1,6 @@
 using DecisionHelper.Data;
 using DecisionHelper.Models;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace DecisionHelper.Services;
@@ -16,24 +17,40 @@ public class MovieService
     }
 
     public async Task<Movie?> AddMovieAsync(
+        ulong guildId,
         string title,
         int? releaseYear,
         int addedByPersonId)
     {
-        string normalizedTitle = NormalizeTitle(title);
+        string validatedTitle = InputValidator.MovieTitle(title);
 
-        if (string.IsNullOrWhiteSpace(normalizedTitle))
+        if (releaseYear is < 1900 or > 2100)
         {
-            throw new ArgumentException(
-                "Movie title cannot be empty.",
-                nameof(title));
+            throw new ArgumentOutOfRangeException(
+                nameof(releaseYear),
+                "Release year must be between 1900 and 2100.");
         }
+
+        string guildUserId = guildId.ToString();
+        string normalizedTitle = NormalizeTitle(validatedTitle);
 
         await using var db =
             await _dbContextFactory.CreateDbContextAsync();
 
+        bool personBelongsToGuild = await db.People.AnyAsync(person =>
+            person.Id == addedByPersonId &&
+            person.GuildId == guildUserId);
+
+        if (!personBelongsToGuild)
+        {
+            throw new ArgumentException(
+                "The person does not belong to this server.",
+                nameof(addedByPersonId));
+        }
+
         bool alreadyExists = await db.Movies
             .AnyAsync(movie =>
+                movie.GuildId == guildUserId &&
                 movie.NormalizedTitle == normalizedTitle &&
                 movie.ReleaseYear == releaseYear);
 
@@ -44,7 +61,8 @@ public class MovieService
 
         var movie = new Movie
         {
-            Title = title.Trim(),
+            GuildId = guildUserId,
+            Title = validatedTitle,
             NormalizedTitle = normalizedTitle,
             ReleaseYear = releaseYear,
             AddedByPersonId = addedByPersonId,
@@ -53,82 +71,64 @@ public class MovieService
 
         db.Movies.Add(movie);
 
-        await db.SaveChangesAsync();
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException exception)
+            when (IsUniqueConstraintViolation(exception))
+        {
+            return null;
+        }
 
         return movie;
     }
 
-    public async Task<IReadOnlyList<Movie>> GetAllMoviesAsync()
+    public async Task<IReadOnlyList<Movie>> GetMoviesAsync(
+        ulong guildId,
+        MovieFilter filter)
     {
         await using var db =
             await _dbContextFactory.CreateDbContextAsync();
 
-        return await db.Movies
+        IQueryable<Movie> query = db.Movies
             .AsNoTracking()
             .Include(movie => movie.AddedBy)
+            .Where(movie => movie.GuildId == guildId.ToString());
+
+        query = ApplyFilter(query, filter);
+
+        return await query
             .OrderBy(movie => movie.Title)
             .ToListAsync();
     }
 
-    public async Task<IReadOnlyList<Movie>> GetMoviesByPersonAsync(
-        int personId)
+    public async Task<Movie?> GetRandomMovieAsync(
+        ulong guildId,
+        MovieFilter filter)
     {
         await using var db =
             await _dbContextFactory.CreateDbContextAsync();
 
-        return await db.Movies
+        IQueryable<Movie> query = db.Movies
             .AsNoTracking()
             .Include(movie => movie.AddedBy)
-            .Where(movie =>
-                movie.AddedByPersonId == personId)
-            .OrderBy(movie => movie.Title)
-            .ToListAsync();
-    }
+            .Where(movie => movie.GuildId == guildId.ToString());
 
-    public async Task<Movie?> GetRandomMovieAsync()
-    {
-        await using var db =
-            await _dbContextFactory.CreateDbContextAsync();
+        query = ApplyFilter(query, filter);
 
-        int count = await db.Movies.CountAsync();
+        int count = await query.CountAsync();
 
         if (count == 0)
         {
             return null;
         }
 
-        int randomIndex = Random.Shared.Next(count);
+        int index = Random.Shared.Next(count);
 
-        return await db.Movies
-            .AsNoTracking()
-            .Include(movie => movie.AddedBy)
-            .Skip(randomIndex)
-            .FirstOrDefaultAsync();
-    }
-
-    public async Task<Movie?> GetRandomMovieByPersonAsync(
-        int personId)
-    {
-        await using var db =
-            await _dbContextFactory.CreateDbContextAsync();
-
-        var movies = db.Movies
-            .AsNoTracking()
-            .Include(movie => movie.AddedBy)
-            .Where(movie =>
-                movie.AddedByPersonId == personId);
-
-        int count = await movies.CountAsync();
-
-        if (count == 0)
-        {
-            return null;
-        }
-
-        int randomIndex = Random.Shared.Next(count);
-
-        return await movies
-            .Skip(randomIndex)
+        return await query
+            .OrderBy(movie => movie.Id)
+            .Skip(index)
             .FirstOrDefaultAsync();
     }
 
@@ -139,54 +139,140 @@ public class MovieService
             .ToUpperInvariant();
     }
 
-public async Task<MovieWatchResult> MarkMovieWatchedAsync(
-    string title,
-    int personId)
-{
-    string normalizedTitle = NormalizeTitle(title);
+    public async Task<MovieWatchResult> MarkMovieWatchedAsync(
+        ulong guildId,
+        string title,
+        int? releaseYear,
+        int personId)
+    {
+        string normalizedTitle = NormalizeTitle(
+            InputValidator.MovieTitle(title));
 
-    await using var db =
-        await _dbContextFactory.CreateDbContextAsync();
+        await using var db =
+            await _dbContextFactory.CreateDbContextAsync();
 
-    Movie? movie = await db.Movies
-        .SingleOrDefaultAsync(movie =>
+        bool personBelongsToGuild = await db.People.AnyAsync(person =>
+            person.Id == personId &&
+            person.GuildId == guildId.ToString());
+
+        if (!personBelongsToGuild)
+        {
+            throw new ArgumentException(
+                "The person does not belong to this server.",
+                nameof(personId));
+        }
+
+        IQueryable<Movie> movieQuery = db.Movies.Where(movie =>
+            movie.GuildId == guildId.ToString() &&
             movie.NormalizedTitle == normalizedTitle);
 
-    if (movie is null)
-    {
-        return MovieWatchResult.MovieNotFound;
-    }
-
-    MovieWatchStatus? status =
-        await db.MovieWatchStatuses
-            .SingleOrDefaultAsync(status =>
-                status.MovieId == movie.Id &&
-                status.PersonId == personId);
-
-    if (status is null)
-    {
-        status = new MovieWatchStatus
+        if (releaseYear.HasValue)
         {
-            MovieId = movie.Id,
-            PersonId = personId,
-            HasSeen = true,
-            WatchedAtUtc = DateTime.UtcNow
+            movieQuery = movieQuery.Where(movie =>
+                movie.ReleaseYear == releaseYear);
+        }
+
+        List<Movie> matches = await movieQuery
+            .Take(2)
+            .ToListAsync();
+
+        if (matches.Count > 1)
+        {
+            return MovieWatchResult.AmbiguousMovie;
+        }
+
+        Movie? movie = matches.SingleOrDefault();
+
+        if (movie is null)
+        {
+            return MovieWatchResult.MovieNotFound;
+        }
+
+        MovieWatchStatus? status =
+            await db.MovieWatchStatuses
+                .SingleOrDefaultAsync(status =>
+                    status.MovieId == movie.Id &&
+                    status.PersonId == personId);
+
+        if (status is null)
+        {
+            status = new MovieWatchStatus
+            {
+                MovieId = movie.Id,
+                PersonId = personId,
+                HasSeen = true,
+                WatchedAtUtc = DateTime.UtcNow
+            };
+
+            db.MovieWatchStatuses.Add(status);
+        }
+        else if (status.HasSeen)
+        {
+            return MovieWatchResult.AlreadyWatched;
+        }
+        else
+        {
+            status.HasSeen = true;
+            status.WatchedAtUtc = DateTime.UtcNow;
+        }
+
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException exception)
+            when (IsUniqueConstraintViolation(exception))
+        {
+            return MovieWatchResult.AlreadyWatched;
+        }
+
+        return MovieWatchResult.MarkedWatched;
+    }
+
+    private static IQueryable<Movie> ApplyFilter(
+        IQueryable<Movie> query,
+        MovieFilter filter)
+    {
+        if (filter.AddedByPersonIds is { Count: > 0 })
+        {
+            IReadOnlyCollection<int> personIds = filter.AddedByPersonIds;
+
+            query = query.Where(movie =>
+                personIds.Contains(movie.AddedByPersonId));
+        }
+
+        if (filter.WatchStatusPersonId.HasValue)
+        {
+            int personId =
+                filter.WatchStatusPersonId.Value;
+
+            switch (filter.WatchStatus)
+            {
+                case WatchFilter.Watched:
+                    query = query.Where(movie =>
+                        movie.WatchStatuses.Any(status =>
+                            status.PersonId == personId &&
+                            status.HasSeen));
+                    break;
+
+                case WatchFilter.Unwatched:
+                    query = query.Where(movie =>
+                        !movie.WatchStatuses.Any(status =>
+                            status.PersonId == personId &&
+                            status.HasSeen));
+                    break;
+            }
+        }
+
+        return query;
+    }
+
+    private static bool IsUniqueConstraintViolation(
+        DbUpdateException exception)
+    {
+        return exception.InnerException is SqliteException
+        {
+            SqliteExtendedErrorCode: 1555 or 2067
         };
-
-        db.MovieWatchStatuses.Add(status);
-    }
-    else if (status.HasSeen)
-    {
-        return MovieWatchResult.AlreadyWatched;
-    }
-    else
-    {
-        status.HasSeen = true;
-        status.WatchedAtUtc = DateTime.UtcNow;
-    }
-
-    await db.SaveChangesAsync();
-
-    return MovieWatchResult.MarkedWatched;
     }
 }

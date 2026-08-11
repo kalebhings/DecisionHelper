@@ -4,6 +4,8 @@ public class Person
 {
     public int Id { get; set; }
 
+    public required string GuildId { get; set; }
+
     public required string DiscordUserId { get; set; }
 
     public required string Nickname { get; set; }

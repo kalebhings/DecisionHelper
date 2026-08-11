@@ -2,7 +2,7 @@ using Discord.WebSocket;
 
 public interface ICommand
 {
-  string Name { get; }
+    string Name { get; }
 
-  Task ExecuteAsync(SocketSlashCommand command);
+    Task ExecuteAsync(SocketSlashCommand command);
 }

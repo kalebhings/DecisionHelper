@@ -1,3 +1,4 @@
+using DecisionHelper.Discord;
 using Discord.WebSocket;
 using DecisionHelper.Services;
 
@@ -14,30 +15,43 @@ public class SetNicknameCommand : ICommand
 
     public async Task ExecuteAsync(SocketSlashCommand command)
     {
+        if (!command.GuildId.HasValue)
+        {
+            await InteractionResponses.RespondAsync(
+                command,
+                "Nicknames can only be set in a server.",
+                ephemeral: true);
+            return;
+        }
+
         var nicknameOption = command.Data.Options
             .FirstOrDefault(option => option.Name == "nickname");
 
         string? nickname =
             nicknameOption?.Value?.ToString();
 
-        if (string.IsNullOrWhiteSpace(nickname))
+        string trimmedNickname = nickname?.Trim() ?? string.Empty;
+
+        if (trimmedNickname.Length is 0 or > InputValidator.MaxNicknameLength ||
+            trimmedNickname.Any(char.IsControl))
         {
-            await command.RespondAsync(
-                "Please provide a nickname.",
-                ephemeral: true
-            );
+            await InteractionResponses.RespondAsync(
+                command,
+                "Provide a nickname of 50 characters or fewer.",
+                ephemeral: true);
 
             return;
         }
 
-        var person = await _personService.SetNicknameAsync(
-            command.User.Id,
-            nickname
-        );
+        await command.DeferAsync(ephemeral: true);
 
-        await command.RespondAsync(
-            $"Your nickname is now **{person.Nickname}**.",
-            ephemeral: true
-        );
+        var person = await _personService.SetNicknameAsync(
+            command.GuildId.Value,
+            command.User.Id,
+            trimmedNickname);
+
+        await InteractionResponses.CompleteAsync(
+            command,
+            $"Your nickname is now **{Discord.Format.Sanitize(person.Nickname)}**.");
     }
 }

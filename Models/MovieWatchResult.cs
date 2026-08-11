@@ -4,5 +4,6 @@ public enum MovieWatchResult
 {
     MarkedWatched,
     AlreadyWatched,
-    MovieNotFound
+    MovieNotFound,
+    AmbiguousMovie
 }

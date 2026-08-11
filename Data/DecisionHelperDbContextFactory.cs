@@ -1,3 +1,5 @@
+using DecisionHelper.Configuration;
+using DotNetEnv;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
@@ -8,11 +10,13 @@ public class DecisionHelperDbContextFactory
 {
     public DecisionHelperDbContext CreateDbContext(string[] args)
     {
+        Env.NoClobber().Load();
+
         var optionsBuilder =
             new DbContextOptionsBuilder<DecisionHelperDbContext>();
 
         optionsBuilder.UseSqlite(
-            "Data Source=decision-helper.db");
+            AppConfiguration.GetDatabaseConnectionString());
 
         return new DecisionHelperDbContext(
             optionsBuilder.Options);

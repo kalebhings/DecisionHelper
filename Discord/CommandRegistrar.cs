@@ -1,5 +1,6 @@
 using Discord;
 using Discord.Rest;
+using DecisionHelper.Services;
 
 namespace DecisionHelper.Discord;
 
@@ -22,39 +23,27 @@ public class CommandRegistrar
     {
         foreach (ulong serverId in _serverIds)
         {
-            if (clearExistingCommands)
-            {
-                await ClearCommandsAsync(serverId);
-            }
-
-            await RegisterCommandsAsync(serverId);
-        }
-    }
-
-    private async Task ClearCommandsAsync(ulong serverId)
-    {
-        var commands =
-            await _restClient.GetGuildApplicationCommands(
-                serverId);
-
-        foreach (var command in commands)
-        {
-            await command.DeleteAsync();
-
-            Console.WriteLine(
-                $"Deleted /{command.Name} from guild {serverId}");
+            await RegisterCommandsAsync(serverId, clearExistingCommands);
         }
     }
 
     private async Task RegisterCommandsAsync(
-        ulong serverId)
+        ulong serverId,
+        bool clearExistingCommands)
     {
-        foreach (SlashCommandBuilder command in BuildCommands())
-        {
-            await _restClient.CreateGuildCommand(
-                command.Build(),
-                serverId);
-        }
+        RestGuild guild = await _restClient.GetGuildAsync(serverId);
+        ApplicationCommandProperties[] commands = BuildCommands()
+            .Select(command => command.Build())
+            .ToArray();
+
+        await guild.BulkOverwriteApplicationCommandsAsync(commands);
+
+        string action = clearExistingCommands
+            ? "Cleared stale commands and registered"
+            : "Registered";
+
+        Console.WriteLine(
+            $"{action} {commands.Length} commands in guild {serverId}");
     }
 
     private static SlashCommandBuilder[] BuildCommands()
@@ -80,10 +69,12 @@ public class CommandRegistrar
             .WithName("setnickname")
             .WithDescription("Sets your nickname")
             .AddOption(
-                "nickname",
-                ApplicationCommandOptionType.String,
-                "The nickname to use",
-                isRequired: true);
+                new SlashCommandOptionBuilder()
+                    .WithName("nickname")
+                    .WithDescription("The nickname to use")
+                    .WithType(ApplicationCommandOptionType.String)
+                    .WithRequired(true)
+                    .WithMaxLength(InputValidator.MaxNicknameLength));
     }
 
     private static SlashCommandBuilder BuildMovieCommand()
@@ -98,27 +89,68 @@ public class CommandRegistrar
                     .WithDescription("Adds a movie to the list")
                     .WithType(ApplicationCommandOptionType.SubCommand)
                     .AddOption(
-                        "name",
-                        ApplicationCommandOptionType.String,
-                        "The movie title",
-                        isRequired: true)
+                        new SlashCommandOptionBuilder()
+                            .WithName("name")
+                            .WithDescription("The movie title")
+                            .WithType(ApplicationCommandOptionType.String)
+                            .WithRequired(true)
+                            .WithMaxLength(InputValidator.MaxMovieTitleLength))
                     .AddOption(
-                        "year",
-                        ApplicationCommandOptionType.Integer,
-                        "The movie's release year",
-                        isRequired: false))
+                        new SlashCommandOptionBuilder()
+                            .WithName("year")
+                            .WithDescription("The movie's release year")
+                            .WithType(ApplicationCommandOptionType.Integer)
+                            .WithRequired(false)
+                            .WithMinValue(1900)
+                            .WithMaxValue(2100)))
 
             .AddOption(
                 new SlashCommandOptionBuilder()
                     .WithName("list")
-                    .WithDescription("Shows all movies")
-                    .WithType(ApplicationCommandOptionType.SubCommand))
+                    .WithDescription("Shows movies")
+                    .WithType(ApplicationCommandOptionType.SubCommand)
+
+                    .AddOption(
+                        new SlashCommandOptionBuilder()
+                            .WithName("added-by")
+                            .WithDescription(
+                                "Only show movies added by this bot nickname")
+                            .WithType(ApplicationCommandOptionType.String)
+                            .WithRequired(false)
+                            .WithMaxLength(InputValidator.MaxNicknameLength))
+
+                    .AddOption(
+                        new SlashCommandOptionBuilder()
+                            .WithName("status")
+                            .WithDescription("Filter by your watch status")
+                            .WithType(ApplicationCommandOptionType.String)
+                            .WithRequired(false)
+                            .AddChoice("Watched", "watched")
+                            .AddChoice("Unwatched", "unwatched")))
 
             .AddOption(
                 new SlashCommandOptionBuilder()
                     .WithName("pick")
                     .WithDescription("Picks a random movie")
-                    .WithType(ApplicationCommandOptionType.SubCommand))
+                    .WithType(ApplicationCommandOptionType.SubCommand)
+
+                    .AddOption(
+                        new SlashCommandOptionBuilder()
+                            .WithName("added-by")
+                            .WithDescription(
+                                "Only pick movies added by this bot nickname")
+                            .WithType(ApplicationCommandOptionType.String)
+                            .WithRequired(false)
+                            .WithMaxLength(InputValidator.MaxNicknameLength))
+
+                    .AddOption(
+                        new SlashCommandOptionBuilder()
+                            .WithName("status")
+                            .WithDescription("Filter by your watch status")
+                            .WithType(ApplicationCommandOptionType.String)
+                            .WithRequired(false)
+                            .AddChoice("Watched", "watched")
+                            .AddChoice("Unwatched", "unwatched")))
 
             .AddOption(
                 new SlashCommandOptionBuilder()
@@ -126,9 +158,19 @@ public class CommandRegistrar
                     .WithDescription("Marks a movie as watched")
                     .WithType(ApplicationCommandOptionType.SubCommand)
                     .AddOption(
-                        "name",
-                        ApplicationCommandOptionType.String,
-                        "The movie title",
-                        isRequired: true));
+                        new SlashCommandOptionBuilder()
+                            .WithName("name")
+                            .WithDescription("The movie title")
+                            .WithType(ApplicationCommandOptionType.String)
+                            .WithRequired(true)
+                            .WithMaxLength(InputValidator.MaxMovieTitleLength))
+                    .AddOption(
+                        new SlashCommandOptionBuilder()
+                            .WithName("year")
+                            .WithDescription("Required when releases share a title")
+                            .WithType(ApplicationCommandOptionType.Integer)
+                            .WithRequired(false)
+                            .WithMinValue(1900)
+                            .WithMaxValue(2100)));
     }
 }

@@ -4,6 +4,8 @@ public class Movie
 {
     public int Id { get; set; }
 
+    public required string GuildId { get; set; }
+
     public required string Title { get; set; }
 
     public required string NormalizedTitle { get; set; }

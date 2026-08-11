@@ -25,20 +25,40 @@ public class DecisionHelperDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Person>()
-            .HasIndex(person => person.DiscordUserId)
+            .HasIndex(person => new
+            {
+                person.GuildId,
+                person.DiscordUserId
+            })
             .IsUnique();
 
         modelBuilder.Entity<Movie>()
             .HasIndex(movie => new
             {
+                movie.GuildId,
                 movie.NormalizedTitle,
                 movie.ReleaseYear
             })
+            .HasDatabaseName(
+                "IX_Movies_GuildId_NormalizedTitle_ReleaseYear")
+            .HasFilter("ReleaseYear IS NOT NULL")
+            .IsUnique();
+
+        modelBuilder.Entity<Movie>()
+            .HasIndex(movie => new
+            {
+                movie.GuildId,
+                movie.NormalizedTitle
+            })
+            .HasDatabaseName(
+                "IX_Movies_GuildId_NormalizedTitle_NoReleaseYear")
+            .HasFilter("ReleaseYear IS NULL")
             .IsUnique();
 
         modelBuilder.Entity<Tag>()
             .HasIndex(tag => new
             {
+                tag.GuildId,
                 tag.NormalizedName,
                 tag.Kind
             })
