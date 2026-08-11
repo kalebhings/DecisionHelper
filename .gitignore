@@ -1,6 +1,13 @@
 # .NET build output
 bin/
 obj/
+artifacts/
+
+# Test and coverage output
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
 
 # Environment variables/secrets
 .env
