@@ -2,38 +2,45 @@
 
 DecisionHelper is a personal Discord bot written in C# to help make everyday decisions easier.
 
-The project currently focuses on maintaining a shared movie list, tracking who added each movie, and randomly choosing something to watch. The long-term goal is to expand the same idea to board games, card games, video games, date-night ideas, and other activities.
+The project currently focuses on maintaining a movie list for each configured Discord server, tracking who added and watched each movie, and randomly choosing something to watch. The long-term goal is to expand the same idea to board games, card games, video games, date-night ideas, and other activities.
 
 This project is both personally useful and intended as a portfolio project for practicing C#, Discord bot development, Entity Framework Core, and relational database design.
 
 ## Current Features
 
-- Discord slash commands
-- Add movies to a shared list
-- Store the person who added each movie
-- Optional release year
-- Persist data using SQLite and Entity Framework Core
-- List movies grouped by who added them
-- Pick a random movie
-- Set a custom nickname
-- Initial support for per-person movie watch status
+- Discord slash commands synchronized to each configured server
+- Independent movie lists, nicknames, and watch history per server
+- Add movies with an optional release year and duplicate prevention
+- List movies grouped by the nickname of the person who added them
+- Filter lists and random picks by bot nickname
+- Filter lists and random picks by the caller's watched or unwatched status
+- Mark movies as watched per person
+- Disambiguate releases that share a title by release year
+- Set short bot-specific nicknames without depending on Discord presence
+- Paginate long movie lists to stay within Discord message limits
+- Validate stored input, escape Discord Markdown, and suppress mentions
+- Persist data with SQLite and Entity Framework Core migrations
+- Apply migrations automatically at startup
+- Cover service behavior and database migrations with automated tests
 
-Current command structure:
+Current command structure and options:
 
 ```text
-/movie add
-/movie list
-/movie pick
-/movie watched
+/movie add name:<title> [year:<release-year>]
+/movie list [added-by:<bot-nickname>] [status:watched|unwatched]
+/movie pick [added-by:<bot-nickname>] [status:watched|unwatched]
+/movie watched name:<title> [year:<release-year>]
 
-/setnickname
+/setnickname nickname:<nickname>
 /ping
 ```
 
+The `added-by` option uses nicknames stored by `/setnickname`. Matching is
+case-insensitive and does not require the Discord member to be online.
+
 ## Planned Features
 
-- Mark movies as watched or unwatched per person
-- Filter random selections by watched status
+- Mark movies as unwatched again
 - Movie genres and custom tags
   - Sci-Fi
   - Comedy
@@ -46,7 +53,8 @@ Current command structure:
 - Mood-based filtering
 - A sadness scale for avoiding emotionally heavy movies when desired
 - Discord autocomplete for selecting existing movies
-- Better command responses and embeds
+- Nickname autocomplete for movie filters
+- Richer command responses and embeds
 - Board games
 - Card games
 - Video games
@@ -62,32 +70,41 @@ Current command structure:
 - SQLite
 - Microsoft.Extensions.DependencyInjection
 - DotNetEnv
+- xUnit
 
 ## Project Structure
 
 ```text
 DecisionHelper/
-├── Commands/       # Discord command handlers
-├── Data/           # EF Core DbContext and database configuration
-├── Models/         # Domain/database models
-├── Services/       # Application and database logic
-├── Migrations/     # Entity Framework Core migrations
-├── Bot.cs          # Discord client setup and command registration
-├── CommandHandler.cs
-└── Program.cs      # Application startup and dependency configuration
+├── Commands/          # Slash-command handlers
+├── Configuration/     # Environment configuration parsing
+├── Data/              # EF Core context, factory, and legacy data migration
+├── Discord/           # Command registration and safe interaction responses
+├── Migrations/        # EF Core schema migrations and model snapshot
+├── Models/            # Database entities, filters, and operation results
+├── Services/          # Validation and database-backed application logic
+├── Tests/             # xUnit service and migration tests
+├── Bot.cs             # Discord client lifecycle
+├── CommandHandler.cs  # Interaction routing and error boundary
+├── DecisionHelper.csproj
+└── Program.cs         # Startup, migrations, and dependency wiring
 ```
 
 The project follows a simple layered structure:
 
 ```text
-Discord
-   ↓
+Discord interactions
+   |
+   v
 Commands
-   ↓
+   |
+   v
 Services
-   ↓
+   |
+   v
 Entity Framework Core
-   ↓
+   |
+   v
 SQLite
 ```
 
@@ -127,22 +144,35 @@ You may also commit an `.env.example` file with placeholder values so other deve
 
 ### Restore the database
 
-Apply the included Entity Framework Core migrations:
+Migrations are applied automatically when the bot starts. To apply them
+without connecting the bot to Discord:
 
 ```bash
-dotnet ef database update
+dotnet run -- --migrate-only
 ```
 
-If `dotnet ef` is not available:
-
-```bash
-dotnet tool install --global dotnet-ef
-```
+When upgrading from the original shared database, existing records are
+assigned to the first configured server and copied to every additional
+configured server. New records are isolated per server.
 
 ### Run the bot
 
 ```bash
 dotnet run
+```
+
+Commands are bulk-synchronized in each configured server when the bot starts,
+which also removes stale command definitions. The existing clear flag remains
+available for an explicit command refresh:
+
+```bash
+dotnet run -- --clear-commands
+```
+
+### Run tests
+
+```bash
+dotnet test Tests/DecisionHelper.Tests.csproj
 ```
 
 ## Database
@@ -160,6 +190,10 @@ The database includes models for:
 SQLite keeps development and deployment simple while still allowing the project to demonstrate relational modeling, migrations, foreign keys, and asynchronous database operations through Entity Framework Core.
 
 The generated database file is intentionally excluded from source control.
+
+All application queries use parameterized EF Core LINQ expressions. User input
+is validated before persistence and is never concatenated into SQL. Raw SQL is
+limited to static migration statements that do not contain user-provided data.
 
 ## Development Status
 
